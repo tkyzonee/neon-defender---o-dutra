@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neon Defender</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 40%, #1a0b2e 0%, #050510 100%);
+    color: #fff;
+    font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif;
+    overflow: hidden;
+  }
+  #jogo {
+    position: relative;
+    width: min(100vw, 133.33vh, 800px);
+    aspect-ratio: 4 / 3;
+    border: 2px solid #333;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 0 25px rgba(0, 255, 255, 0.25), inset 0 0 20px rgba(255, 0, 255, 0.15);
+  }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #hud {
+    position: absolute;
+    top: 10px; left: 16px; right: 16px;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: clamp(11px, 2.2vw, 17px);
+    font-weight: bold;
+    letter-spacing: 2px;
+    color: #0ff;
+    text-shadow: 0 0 6px #0ff;
+    pointer-events: none;
+  }
+  #painel {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    background: rgba(5, 5, 16, 0.82);
+    backdrop-filter: blur(3px);
+    transition: opacity 0.3s;
+  }
+  #painel.oculto { opacity: 0; pointer-events: none; }
+  #titulo {
+    margin: 0 0 10px;
+    font-size: clamp(26px, 7vw, 54px);
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    color: #fff;
+  }
+  #mensagem { margin: 0 0 8px; color: #ddd; font-size: clamp(12px, 2.4vw, 18px); }
+  #instrucoes { margin: 0 0 24px; color: #888; font-size: clamp(10px, 2vw, 14px); line-height: 1.7; }
+  #botao {
+    background: transparent;
+    border: 2px solid #f0f;
+    color: #f0f;
+    padding: 12px 36px;
+    font-family: inherit;
+    font-size: clamp(14px, 3vw, 22px);
+    font-weight: bold;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.15s, filter 0.15s;
+  }
+  #botao:hover { transform: scale(1.06); filter: brightness(1.4); }
+</style>
+</head>
+<body>
+
+<div id="jogo">
+  <canvas id="tela" width="800" height="600"></canvas>
+
+  <div id="hud">
+    <div>PONTOS: <span id="hudPontos">0</span></div>
+    <div>ONDA: <span id="hudOnda">0</span></div>
+    <div>VIDAS: <span id="hudVidas">0</span></div>
+    <div>RECORDE: <span id="hudRecorde">0</span></div>
+  </div>
+
+  <div id="painel">
+    <h1 id="titulo">Neon Defender</h1>
+    <p id="mensagem"></p>
+    <p id="instrucoes">
+      Teclado: ← → ou A / D para mover &nbsp;·&nbsp; ESPAÇO para atirar<br>
+      Mouse ou toque: arraste para mover e segure para atirar
+    </p>
+    <button id="botao">Iniciar Missão</button>
+  </div>
+</div>
+
+<script>
+// ==================================================================
+//  🕹️ PAINEL DE CONTROLE — altere os valores e veja o resultado!
+//  Regra de ouro: mude UMA coisa, salve (commit) e teste.
+//  Cuidado: não apague as vírgulas no final das linhas.
+// ==================================================================
+const CONFIG = {
+  NOME_DO_JOGO: "Neon Defender",      // título da tela inicial
+  NOME_DO_PILOTO: "Piloto Anônimo",   // coloque o SEU nome aqui
+  VIDAS: 3,                           // vidas no início do jogo
+  VELOCIDADE_NAVE: 7,                 // velocidade da sua nave
+  VELOCIDADE_TIRO: 10,                // velocidade dos tiros
+  INTERVALO_TIRO: 250,                // milissegundos entre tiros (menor = metralhadora)
+  VELOCIDADE_INIMIGOS: 1.5,           // velocidade de queda dos inimigos
+  INIMIGOS_POR_ONDA: 6,               // quantos inimigos na primeira onda
+  AUMENTO_POR_ONDA: 0.3,              // quanto a velocidade aumenta a cada onda
+  PONTOS_POR_INIMIGO: 10,             // pontos por inimigo destruído
+  TAMANHO_INIMIGO: 18,                // tamanho (raio) dos inimigos
+  COR_NAVE: "#00FFFF",
+  COR_TIRO: "#FFFF00",
+  CORES_INIMIGOS: ["#FF0055", "#B400FF", "#00FF66", "#FF8800"],
+  COR_FUNDO: "#050510",
+  QUANTIDADE_ESTRELAS: 120
+};
+
+// ==================================================================
+//  🔒 MÓDULOS SECRETOS — troque false por true para ativar
+// ==================================================================
+const MODULOS = {
+  TIRO_TRIPLO: false,       // dispara 3 tiros em leque
+  ESCUDO: false,            // escudo que absorve 1 dano a cada onda
+  CHEFAO: false,            // um chefão aparece a cada 3 ondas
+  TIRO_AUTOMATICO: false    // a nave atira sozinha
+};
+
+// ==================================================================
+//  ⚙️ DAQUI PARA BAIXO: O MOTOR DO JOGO
+//  Só mexa aqui nos PONTOS DE DESAFIO (use Ctrl+F para encontrar).
+// ==================================================================
+const canvas = document.getElementById("tela");
+const ctx = canvas.getContext("2d");
+const W = canvas.width;
+const H = canvas.height;
+
+const painel = document.getElementById("painel");
+const tituloEl = document.getElementById("titulo");
+const mensagemEl = document.getElementById("mensagem");
+const botao = document.getElementById("botao");
+const hudPontos = document.getElementById("hudPontos");
+const hudOnda = document.getElementById("hudOnda");
+const hudVidas = document.getElementById("hudVidas");
+const hudRecorde = document.getElementById("hudRecorde");
+
+let estado = "menu";          // "menu", "jogando" ou "fim"
+let pontos = 0;
+let vidas = 0;
+let onda = 0;
+let recorde = lerRecorde();
+let recordeAnterior = recorde;
+let nave = null;
+let tiros = [];
+let inimigos = [];
+let particulas = [];
+let estrelas = [];
+let escudoAtivo = false;
+let ultimoTiro = 0;
+let tremor = 0;
+let momentoDoFim = 0;
+const aviso = { texto: "", tempo: 0 };
+const teclas = {};
+let ponteiroAtirando = false;
+
+// ---------- Utilidades ----------
+function limitar(valor, minimo, maximo) {
+  return Math.max(minimo, Math.min(maximo, valor));
+}
+
+function distancia(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function lerRecorde() {
+  try { return Number(localStorage.getItem("neonDefenderRecorde")) || 0; }
+  catch (erro) { return 0; }
+}
+
+function salvarRecorde() {
+  try { localStorage.setItem("neonDefenderRecorde", recorde); }
+  catch (erro) { /* navegador sem armazenamento: segue o jogo */ }
+}
+
+// ---------- Tela e placar ----------
+function mostrarPainel(titulo, mensagem, textoBotao, cor) {
+  tituloEl.textContent = titulo;
+  tituloEl.style.textShadow = `0 0 10px ${cor}, 0 0 25px ${cor}, 0 0 45px ${cor}`;
+  mensagemEl.textContent = mensagem;
+  botao.textContent = textoBotao;
+  botao.style.color = cor;
+  botao.style.borderColor = cor;
+  botao.style.boxShadow = `0 0 10px ${cor}, inset 0 0 10px ${cor}`;
+  painel.classList.remove("oculto");
+}
+
+function atualizarHUD() {
+  hudPontos.textContent = pontos;
+  hudOnda.textContent = onda;
+  hudVidas.textContent = vidas > 5 ? "♥ x" + vidas : "♥".repeat(Math.max(vidas, 0)) || "0";
+  hudRecorde.textContent = recorde;
+}
+
+function mostrarAviso(texto) {
+  aviso.texto = texto;
+  aviso.tempo = 100;
+}
+
+// ---------- Início, ondas e fim ----------
+function criarEstrelas() {
+  estrelas = [];
+  for (let i = 0; i < CONFIG.QUANTIDADE_ESTRELAS; i++) {
+    estrelas.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      velocidade: 0.4 + Math.random() * 2,
+      raio: 0.3 + Math.random() * 1.5
+    });
+  }
+}
+
+function tentarIniciar() {
+  if (estado === "jogando") return;
+  if (estado === "fim" && performance.now() - momentoDoFim < 800) return;
+  iniciarJogo();
+}
+
+function iniciarJogo() {
+  pontos = 0;
+  vidas = CONFIG.VIDAS;
+  onda = 0;
+  nave = { x: W / 2, y: H - 55 };
+  tiros = [];
+  inimigos = [];
+  particulas = [];
+  ultimoTiro = 0;
+  tremor = 0;
+  recordeAnterior = recorde;
+  painel.classList.add("oculto");
+  estado = "jogando";
+  proximaOnda();
+  atualizarHUD();
+}
+
+function proximaOnda() {
+  onda++;
+  escudoAtivo = MODULOS.ESCUDO;
+  const quantidade = CONFIG.INIMIGOS_POR_ONDA + (onda - 1) * 2;
+  const velocidade = CONFIG.VELOCIDADE_INIMIGOS + (onda - 1) * CONFIG.AUMENTO_POR_ONDA;
+
+  for (let i = 0; i < quantidade; i++) {
+    const inimigo = {
+      x: 40 + Math.random() * (W - 80),
+      y: -40 - i * 70,
+      raio: CONFIG.TAMANHO_INIMIGO,
+      velocidade: velocidade * (0.8 + Math.random() * 0.4),
+      fase: Math.random() * Math.PI * 2,
+      cor: CONFIG.CORES_INIMIGOS[i % CONFIG.CORES_INIMIGOS.length],
+      valor: CONFIG.PONTOS_POR_INIMIGO,
+      vida: 1,
+      vidaMaxima: 1,
+      chefao: false,
+      giro: 0
+    };
+
+    // >>> PONTO DE DESAFIO E (Inimigo Dourado) <<<
+
+    inimigos.push(inimigo);
+  }
+
+  if (MODULOS.CHEFAO && onda % 3 === 0) {
+    const vidaDoChefao = 15 + onda;
+    inimigos.push({
+      x: W / 2,
+      y: -150,
+      raio: 45,
+      velocidade: velocidade * 0.45,
+      fase: 0,
+      cor: "#FF2222",
+      valor: CONFIG.PONTOS_POR_INIMIGO * 20,
+      vida: vidaDoChefao,
+      vidaMaxima: vidaDoChefao,
+      chefao: true,
+      giro: 0
+    });
+  }
+
+  mostrarAviso("ONDA " + onda);
+
+  // >>> PONTO DE DESAFIO D (Vida Extra) <<<
+
+  atualizarHUD();
+}
+
+function fimDeJogo() {
+  estado = "fim";
+  momentoDoFim = performance.now();
+
+  // >>> PONTO DE DESAFIO A (Mensagem de Fim) <<<
+  const tituloFim = "GAME OVER";
+  let mensagemFim = `${CONFIG.NOME_DO_PILOTO}, você chegou à onda ${onda} com ${pontos} pontos.`;
+
+  if (pontos > recordeAnterior) {
+    salvarRecorde();
+    mensagemFim += " 🏆 NOVO RECORDE!";
+  }
+  mostrarPainel(tituloFim, mensagemFim, "Jogar de novo", "#FF0033");
+}
+
+// ---------- Ações ----------
+function atirar(agora) {
+  if (agora - ultimoTiro < CONFIG.INTERVALO_TIRO) return;
+  ultimoTiro = agora;
+  tiros.push({ x: nave.x, y: nave.y - 22, dx: 0 });
+  if (MODULOS.TIRO_TRIPLO) {
+    tiros.push({ x: nave.x - 8, y: nave.y - 14, dx: -2.5 });
+    tiros.push({ x: nave.x + 8, y: nave.y - 14, dx: 2.5 });
+  }
+}
+
+function explodir(x, y, cor, quantidade) {
+  for (let i = 0; i < quantidade; i++) {
+    const angulo = Math.random() * Math.PI * 2;
+    const forca = 1 + Math.random() * 4;
+    particulas.push({
+      x: x,
+      y: y,
+      dx: Math.cos(angulo) * forca,
+      dy: Math.sin(angulo) * forca,
+      vida: 30 + Math.random() * 20,
+      cor: cor
+    });
+  }
+}
+
+function perderVida() {
+  if (escudoAtivo) {
+    escudoAtivo = false;
+    explodir(nave.x, nave.y, "#00AAFF", 25);
+    mostrarAviso("ESCUDO PERDIDO!");
+    return;
+  }
+  vidas--;
+  tremor = 18;
+  explodir(nave.x, nave.y, CONFIG.COR_NAVE, 30);
+  atualizarHUD();
+  if (vidas <= 0) fimDeJogo();
+}
+
+// ---------- Atualização (física) ----------
+function moverEstrelas(f) {
+  for (const s of estrelas) {
+    s.y += s.velocidade * f;
+    if (s.y > H) { s.y = 0; s.x = Math.random() * W; }
+  }
+}
+
+function atualizar(f, agora) {
+  // Nave
+  if (teclas.ArrowLeft || teclas.KeyA) nave.x -= CONFIG.VELOCIDADE_NAVE * f;
+  if (teclas.ArrowRight || teclas.KeyD) nave.x += CONFIG.VELOCIDADE_NAVE * f;
+  nave.x = limitar(nave.x, 25, W - 25);
+
+  if (teclas.Space || ponteiroAtirando || MODULOS.TIRO_AUTOMATICO) atirar(agora);
+
+  // Tiros
+  for (let i = tiros.length - 1; i >= 0; i--) {
+    const t = tiros[i];
+    t.y -= CONFIG.VELOCIDADE_TIRO * f;
+    t.x += t.dx * f;
+    if (t.y < -20 || t.x < -20 || t.x > W + 20) tiros.splice(i, 1);
+  }
+
+  // Inimigos
+  for (let i = inimigos.length - 1; i >= 0; i--) {
+    const e = inimigos[i];
+    e.y += e.velocidade * f;
+    e.x += Math.sin(e.fase + e.y * 0.02) * (e.chefao ? 2 : 1.2) * f;
+    e.x = limitar(e.x, e.raio, W - e.raio);
+    e.giro += 0.03 * f;
+
+    const passouDoChao = e.y - e.raio > H;
+    const bateuNaNave = distancia(e, nave) < e.raio + 18;
+    if (passouDoChao || bateuNaNave) {
+      if (bateuNaNave) explodir(e.x, e.y, e.cor, 20);
+      inimigos.splice(i, 1);
+      perderVida();
+      if (estado !== "jogando") return;
+    }
+  }
+
+  // Tiros acertando inimigos
+  for (let i = tiros.length - 1; i >= 0; i--) {
+    const t = tiros[i];
+    for (let j = inimigos.length - 1; j >= 0; j--) {
+      const e = inimigos[j];
+      if (distancia(t, e) < e.raio + 4) {
+        tiros.splice(i, 1);
+        e.vida--;
+        if (e.vida <= 0) {
+          pontos += e.valor;
+          explodir(e.x, e.y, e.cor, e.chefao ? 60 : 18);
+          inimigos.splice(j, 1);
+          if (pontos > recorde) recorde = pontos;
+          atualizarHUD();
+        } else {
+          explodir(t.x, t.y, e.cor, 4);
+        }
+        break;
+      }
+    }
+  }
+
+  // Partículas
+  for (let i = particulas.length - 1; i >= 0; i--) {
+    const p = particulas[i];
+    p.x += p.dx * f;
+    p.y += p.dy * f;
+    p.vida -= f;
+    if (p.vida <= 0) particulas.splice(i, 1);
+  }
+
+  if (tremor > 0) tremor -= f;
+  if (inimigos.length === 0) proximaOnda();
+}
+
+// ---------- Desenho ----------
+function desenharEstrelas() {
+  ctx.fillStyle = "#ffffff";
+  for (const s of estrelas) {
+    ctx.globalAlpha = 0.3 + s.raio / 2;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.raio, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function desenharNave() {
+  let cor = CONFIG.COR_NAVE;
+  // >>> PONTO DE DESAFIO C (Cor da Nave) <<<
+
+  const x = nave.x;
+  const y = nave.y;
+
+  // Chama do motor
+  ctx.fillStyle = "#FF8800";
+  ctx.shadowColor = "#FF8800";
+  ctx.shadowBlur = 15;
+  const chama = 8 + Math.random() * 8;
+  ctx.beginPath();
+  ctx.moveTo(x - 7, y + 10);
+  ctx.lineTo(x, y + 14 + chama);
+  ctx.lineTo(x + 7, y + 10);
+  ctx.closePath();
+  ctx.fill();
+
+  // Corpo da nave
+  ctx.shadowColor = cor;
+  ctx.shadowBlur = 20;
+  ctx.strokeStyle = cor;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 22);
+  ctx.lineTo(x + 22, y + 14);
+  ctx.lineTo(x + 8, y + 8);
+  ctx.lineTo(x - 8, y + 8);
+  ctx.lineTo(x - 22, y + 14);
+  ctx.closePath();
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = cor;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.stroke();
+
+  // Cabine
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(x, y - 2, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Escudo
+  if (escudoAtivo) {
+    ctx.strokeStyle = "#00AAFF";
+    ctx.shadowColor = "#00AAFF";
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.6 + Math.sin(performance.now() / 150) * 0.3;
+    ctx.beginPath();
+    ctx.arc(x, y, 34, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.shadowBlur = 0;
+}
+
+function desenharInimigo(e) {
+  // >>> PONTO DE DESAFIO B (Formato do Inimigo) <<<
+  const lados = 6;
+
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  ctx.rotate(e.giro);
+  ctx.beginPath();
+  for (let k = 0; k < lados; k++) {
+    const angulo = (k / lados) * Math.PI * 2;
+    const px = Math.cos(angulo) * e.raio;
+    const py = Math.sin(angulo) * e.raio;
+    if (k === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.shadowColor = e.cor;
+  ctx.shadowBlur = 15;
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = e.cor;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = e.cor;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Núcleo
+  ctx.beginPath();
+  ctx.arc(0, 0, e.raio * 0.25, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Barra de vida do chefão
+  if (e.chefao) {
+    ctx.fillStyle = "#330000";
+    ctx.fillRect(e.x - 50, e.y - e.raio - 16, 100, 6);
+    ctx.fillStyle = "#FF2222";
+    ctx.fillRect(e.x - 50, e.y - e.raio - 16, 100 * (e.vida / e.vidaMaxima), 6);
+  }
+}
+
+function desenharTiros() {
+  ctx.fillStyle = CONFIG.COR_TIRO;
+  ctx.shadowColor = CONFIG.COR_TIRO;
+  ctx.shadowBlur = 12;
+  for (const t of tiros) ctx.fillRect(t.x - 2, t.y - 10, 4, 14);
+  ctx.shadowBlur = 0;
+}
+
+function desenharParticulas() {
+  for (const p of particulas) {
+    ctx.globalAlpha = Math.max(0, p.vida / 50);
+    ctx.fillStyle = p.cor;
+    ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function desenharAviso() {
+  if (aviso.tempo <= 0) return;
+  ctx.globalAlpha = Math.min(1, aviso.tempo / 30);
+  ctx.font = "bold 42px 'Trebuchet MS', Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowColor = "#00FFFF";
+  ctx.shadowBlur = 20;
+  ctx.fillText(aviso.texto, W / 2, H / 2);
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+}
+
+function desenhar() {
+  ctx.save();
+  if (tremor > 0) ctx.translate((Math.random() - 0.5) * tremor, (Math.random() - 0.5) * tremor);
+  ctx.fillStyle = CONFIG.COR_FUNDO;
+  ctx.fillRect(-20, -20, W + 40, H + 40);
+  desenharEstrelas();
+  if (estado !== "menu") {
+    desenharTiros();
+    for (const e of inimigos) desenharInimigo(e);
+    if (estado === "jogando") desenharNave();
+    desenharParticulas();
+    desenharAviso();
+  }
+  ctx.restore();
+}
+
+// ---------- Laço principal ----------
+let ultimoQuadro = performance.now();
+function laco(agora) {
+  let f = (agora - ultimoQuadro) / 16.67;   // mantém a mesma velocidade em qualquer tela
+  ultimoQuadro = agora;
+  if (f > 3) f = 3;
+
+  moverEstrelas(f);
+  if (aviso.tempo > 0) aviso.tempo -= f;
+  if (estado === "jogando") atualizar(f, agora);
+  desenhar();
+  requestAnimationFrame(laco);
+}
+
+// ---------- Controles ----------
+document.addEventListener("keydown", (e) => {
+  teclas[e.code] = true;
+  if (["Space", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.code)) e.preventDefault();
+  if (e.code === "Enter" || e.code === "Space") tentarIniciar();
+});
+document.addEventListener("keyup", (e) => { teclas[e.code] = false; });
+window.addEventListener("blur", () => {
+  for (const k in teclas) teclas[k] = false;
+  ponteiroAtirando = false;
+});
+
+function moverPorPonteiro(clientX) {
+  if (!nave) return;
+  const r = canvas.getBoundingClientRect();
+  nave.x = (clientX - r.left) * (W / r.width);
+}
+canvas.addEventListener("pointermove", (e) => moverPorPonteiro(e.clientX));
+canvas.addEventListener("pointerdown", (e) => {
+  ponteiroAtirando = true;
+  moverPorPonteiro(e.clientX);
+});
+window.addEventListener("pointerup", () => { ponteiroAtirando = false; });
+canvas.addEventListener("pointercancel", () => { ponteiroAtirando = false; });
+canvas.addEventListener("pointerleave", () => { ponteiroAtirando = false; });
+botao.addEventListener("click", tentarIniciar);
+
+// ---------- Ligar o jogo ----------
+document.title = CONFIG.NOME_DO_JOGO;
+criarEstrelas();
+atualizarHUD();
+mostrarPainel(CONFIG.NOME_DO_JOGO, "Piloto: " + CONFIG.NOME_DO_PILOTO, "Iniciar Missão", "#FF00FF");
+requestAnimationFrame(laco);
+</script>
+</body>
+</html>
