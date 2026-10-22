@@ -116,7 +116,7 @@ const CONFIG = {
   VELOCIDADE_TIRO: 20,                // velocidade dos tiros
   INTERVALO_TIRO: 0.5,                // milissegundos entre tiros (menor = metralhadora)
   VELOCIDADE_INIMIGOS: 3,           // velocidade de queda dos inimigos
-  INIMIGOS_POR_ONDA: 30,               // quantos inimigos na primeira onda
+  INIMIGOS_POR_ONDA: 25,               // quantos inimigos na primeira onda
   AUMENTO_POR_ONDA: 0.3,              // quanto a velocidade aumenta a cada onda
   PONTOS_POR_INIMIGO: 67,             // pontos por inimigo destruído
   TAMANHO_INIMIGO: 150,                // tamanho (raio) dos inimigos
@@ -131,8 +131,8 @@ const CONFIG = {
 //  🔒 MÓDULOS SECRETOS — troque false por true para ativar
 // ==================================================================
 const MODULOS = {
-  TIRO_TRIPLO: true,       // dispara 3 tiros em leque
-  ESCUDO: true,            // escudo que absorve 1 dano a cada onda
+  TIRO_TRIPLO: false,       // dispara 3 tiros em leque
+  ESCUDO: false,            // escudo que absorve 1 dano a cada onda
   CHEFAO: true,            // um chefão aparece a cada 3 ondas
   TIRO_AUTOMATICO: true    // a nave atira sozinha
 };
@@ -280,7 +280,7 @@ function proximaOnda() {
   }
 
   if (MODULOS.CHEFAO && onda % 3 === 0) {
-    const vidaDoChefao = 15 + onda;
+    const vidaDoChefao = 300 + onda;
     inimigos.push({
       x: W / 2,
       y: -150,
@@ -308,7 +308,7 @@ function fimDeJogo() {
   momentoDoFim = performance.now();
 
   // >>> PONTO DE DESAFIO A (Mensagem de Fim) <<<
-  const tituloFim = "GAME OVER";
+  const tituloFim = "Cachorro eletronico vercel";
   let mensagemFim = `${CONFIG.NOME_DO_PILOTO}, você chegou à onda ${onda} com ${pontos} pontos.`;
 
   if (pontos > recordeAnterior) {
